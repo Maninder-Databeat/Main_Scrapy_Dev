@@ -15,8 +15,9 @@ wheels/
 # keep the folder but ignore the content
 !.secrets/.gitkeep
 
-# logs
+# logs and parquet
 *.log
+*.parquet
 
 # misc files folders
 misc
