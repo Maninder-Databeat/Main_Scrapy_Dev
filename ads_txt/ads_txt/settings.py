@@ -192,7 +192,7 @@ HTTPCACHE_ENABLED = False
 DUPEFILTER_CLASS = "scrapy.dupefilters.BaseDupeFilter"
 
 # Email Configuration
-SEND_MAIL_BOOL = True
+SEND_MAIL_BOOL = False
 MAIL_HOST = "smtp.gmail.com"
 MAIL_PORT = 587
 MAIL_USER = os.getenv("MAIL_USER")
