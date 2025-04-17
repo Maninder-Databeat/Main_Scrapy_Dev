@@ -89,7 +89,7 @@ CUSTOM_RUN_SETTINGS["COMMON"]["LOCAL_METADATA_FILE_PATH"] = (
 ROBOTSTXT_OBEY = False
 
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
-# CONCURRENT_REQUESTS = 32
+CONCURRENT_REQUESTS = 32
 
 # Configure a delay for requests for the same website (default: 0)
 # See https://docs.scrapy.org/en/latest/topics/settings.html#download-delay
@@ -129,9 +129,11 @@ DOWNLOADER_MIDDLEWARES = {
 
 # Enable or disable extensions
 # See https://docs.scrapy.org/en/latest/topics/extensions.html
-# EXTENSIONS = {
-#    "scrapy.extensions.telnet.TelnetConsole": None,
-# }
+EXTENSIONS = {
+    "scrapy.extensions.telnet.TelnetConsole": None,
+    "scrapy.extensions.logstats.LogStats": 500,
+    "scrapy.extensions.corestats.CoreStats": 500,
+}
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
@@ -166,7 +168,7 @@ FEED_EXPORT_ENCODING = "utf-8"
 
 
 # Enable retry for failed requests
-RETRY_ENABLED = True
+RETRY_ENABLED = False
 RETRY_TIMES = 1  # Number of retries before failing completely
 RETRY_HTTP_CODES = [500, 502, 503, 504, 403, 429]  # Common bot-blocking status codes
 

@@ -1,12 +1,7 @@
 import datetime
 import os
 from collections import defaultdict
-import tempfile
-from pathlib import Path
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
-from itertools import islice
+# from pprint import pprint
 
 import certifi
 from scrapy.crawler import CrawlerProcess
@@ -95,36 +90,6 @@ def run_spider(start_urls_with_meta, project_setting, is_test=True):
     process.start()
 
 
-def generate_start_urls(df_chunk):
-    for _, row in df_chunk.iterrows():
-        yield (
-            row["domain"],
-            defaultdict(
-                None,
-                {
-                    "http_client": row["http_client"],
-                    "inventory_type": row["inventory_type"],
-                    "ads_txt_page_url": row["ads_page_url"],
-                },
-            ),
-        )
-
-
-def read_parquet_in_batches(parquet_path, batch_size):
-    parquet_file = pq.ParquetFile(parquet_path)
-    print(parquet_file.num_row_groups)
-    for rg in range(parquet_file.num_row_groups):
-        table = parquet_file.read_row_group(rg)
-        df_chunk = table.to_pandas()
-
-        it = iter(df_chunk.iterrows())
-        while True:
-            batch = list(islice(it, batch_size))
-            if not batch:
-                break
-            yield pd.DataFrame([row for _, row in batch])
-
-
 if __name__ == "__main__":
     logger.info("Spider crawl started")
     # Now get_project_settings() will load settings from settings.py
@@ -146,8 +111,22 @@ if __name__ == "__main__":
 
         # query = """ SELECT domain, inventory_type, ads_page_url, http_client FROM `ads-txt-validator.ads_txt_scraper_data.start_urls_table` """
         # df = gservice.query_bq_to_pd(query)
+        google_sheet_id = "1Vuul2-7WJX_E3qPahlZzurYr5hPIWzxrLW3ry2q78XI"
+        worksheet_name = "main_file"
 
-        df = gservice.adhoc_gsheet_pull()
+        df = gservice.adhoc_gsheet_pull(google_sheet_id, worksheet_name)
+
+        df.drop(
+            columns=[
+                col_name
+                for col_name in df.columns
+                if col_name
+                not in ["http_client", "ads_page_url", "domain", "inventory_type"]
+            ],
+            inplace=True,
+        )
+
+        df.drop_duplicates(keep="first", inplace=True, ignore_index=True)
 
     finally:
         gservice.service_close()
@@ -155,14 +134,8 @@ if __name__ == "__main__":
     logger.info(df)
     logger.info(df.dtypes)
 
-    BATCH_SIZE = int(os.getenv("URL_BATCH"))
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        tmp_file_name = Path(temp_dir) / "domains_meta_data.parquet"
-
-        logger.info(f"Saving Parquet temp file at {tmp_file_name}")
-
-        # Fill and save DataFrame
+    # df = df.head(10)
+    try:
         df.fillna(
             {
                 "http_client": "curl_cffi",
@@ -172,28 +145,30 @@ if __name__ == "__main__":
             },
             inplace=True,
         )
+        # df.fillna({"ads_page_url": ""}, inplace=True)
+        # df.fillna({"domain": "NA"}, inplace=True)
+    except Exception as e:
+        logger.error(e)
+        df["http_client"].fillna("curl_cffi", inplace=True)
+        df["ads_page_url"].fillna("", inplace=True)
 
-        for col in df.select_dtypes(include=["object"]).columns:
-            df[col] = df[col].fillna("").astype(str)
+    logger.info(df)
 
-        table = pa.Table.from_pandas(df)
-        pq.write_table(table, tmp_file_name, row_group_size=BATCH_SIZE)
-
-        del df, table  # free memory early
-
-        # Read and crawl batches
-        for batch_num, df_batch in enumerate(
-            read_parquet_in_batches(tmp_file_name, BATCH_SIZE), start=1
-        ):
-            logger.info(f"Running batch {batch_num}, size: {len(df_batch)}")
-            start_urls_with_meta = generate_start_urls(df_batch)
-            start_urls_with_meta = list(start_urls_with_meta)
-            # run_spider(start_urls_with_meta, project_setting=settings, is_test=False)
-            print(
-                f"-----------------------------------------batch running ------ {batch_num}"
-            )
-            logger.info(f"Batch {batch_num} finished.")
-
-        logger.info("All batches completed.")
-
+    # df = pd.read_csv(r"C:\Users\zaid\Downloads\sovrn_web.csv")
+    start_urls_with_meta = [
+        (
+            row["domain"],  # ✅ Use domain instead of index
+            defaultdict(
+                None,
+                {
+                    "http_client": row["http_client"],
+                    "inventory_type": row["inventory_type"],
+                    "ads_txt_page_url": row["ads_page_url"],
+                },
+            ),
+        )
+        for _, row in df.iterrows()
+    ]
+    del df
+    # run_spider(start_urls_with_meta, project_setting=settings, is_test=False)
     logger.info("Spider crawl finished")

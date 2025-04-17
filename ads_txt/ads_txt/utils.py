@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import shutil
 
@@ -9,30 +8,35 @@ import numpy as np
 import pandas as pd
 import gspread
 
+
 class GoogleServices:
-
     SCOPES = [
-    "https://www.googleapis.com/auth/bigquery",
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/spreadsheets"
-    ,"https://www.googleapis.com/auth/devstorage.full_control"
-]
+        "https://www.googleapis.com/auth/bigquery",
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/devstorage.full_control",
+    ]
 
-    def __init__(self, project_id:str, json_credentials_path:str):
+    def __init__(self, project_id: str, json_credentials_path: str):
         self.project_id = project_id
         self.json_credentials_path = json_credentials_path
 
-        credentials = Credentials.from_service_account_file(self.json_credentials_path, scopes=GoogleServices.SCOPES)
+        credentials = Credentials.from_service_account_file(
+            self.json_credentials_path, scopes=GoogleServices.SCOPES
+        )
 
-        self.bq_client:bigquery.Client = bigquery.Client(project=project_id, credentials=credentials)
+        self.bq_client: bigquery.Client = bigquery.Client(
+            project=project_id, credentials=credentials
+        )
         print(self.bq_client.project)
-        self.storage_client:storage.Client = storage.Client(project=project_id, credentials=credentials)
-        self.sheet_client:gspread.Client = gspread.Client(auth=credentials)
+        self.storage_client: storage.Client = storage.Client(
+            project=project_id, credentials=credentials
+        )
+        self.sheet_client: gspread.Client = gspread.Client(auth=credentials)
 
-    def adhoc_gsheet_pull(self):
-
-        google_sheet_id = "1DLevo_k0LTfIHH7wL9n08NfYnpq_CbSF5RLNIMaIJU8"
-        worksheet_name = "main_file"
+    def adhoc_gsheet_pull(self, google_sheet_id: str, worksheet_name: str):
+        # google_sheet_id = "1DLevo_k0LTfIHH7wL9n08NfYnpq_CbSF5RLNIMaIJU8"
+        # worksheet_name = "main_file"
 
         spreadsheet = self.sheet_client.open_by_key(google_sheet_id)
 
@@ -44,24 +48,24 @@ class GoogleServices:
 
         df.rename(
             columns={
-                "Publisher" : "publisher",
-                "ORG_ID" : "org_id",
-                "Inventory_Type" : "inventory_type",
-                "Relationship_Type" : "relationship_type",
-                "Account_Manager" : "account_manager",
-                "Account_Manager_Email" : "account_manager_email",
-                "Domain" : "domain",
-                "Ad_Request" : "ad_request",
-                "Revenue" : "revenue",
-            }
-            , inplace=True
+                "Publisher": "publisher",
+                "ORG_ID": "org_id",
+                "Inventory_Type": "inventory_type",
+                "Relationship_Type": "relationship_type",
+                "Account_Manager": "account_manager",
+                "Account_Manager_Email": "account_manager_email",
+                "Domain": "domain",
+                "Ad_Request": "ad_request",
+                "Revenue": "revenue",
+            },
+            inplace=True,
         )
 
-        df['inventory_type'] = np.where(
-            df['inventory_type'].str.contains('app-ads.txt', case=False, na=False),
-            'app-ads.txt',
-            'ads.txt'
-            )
+        df["inventory_type"] = np.where(
+            df["inventory_type"].str.contains("app-ads.txt", case=False, na=False),
+            "app-ads.txt",
+            "ads.txt",
+        )
 
         df["ads_page_url"] = ""
         df["http_client"] = "curl_cffi"
@@ -79,17 +83,15 @@ class GoogleServices:
             project_id (str): Google Cloud project ID.
         """
 
-        client:bigquery.Client = self.bq_client
+        client: bigquery.Client = self.bq_client
         table_ref = client.dataset(dataset_id, self.project_id).table(table_id)
 
         job_config = bigquery.LoadJobConfig(
             source_format=bigquery.SourceFormat.PARQUET,
-            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE  # Append Mode
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # Append Mode
         )
 
-        load_job = client.load_table_from_uri(
-            gcs_uri, table_ref, job_config=job_config
-        )
+        load_job = client.load_table_from_uri(gcs_uri, table_ref, job_config=job_config)
 
         load_job.result()  # Wait for the job to complete
         print(f"Replaced data from {gcs_uri} to {dataset_id}.{table_id}")
@@ -115,7 +117,9 @@ class GoogleServices:
         df = query_job.result().to_dataframe()
         return df
 
-    def upload_parquet_to_gcs(self, local_file_path, bucket_name, destination_blob_name):
+    def upload_parquet_to_gcs(
+        self, local_file_path, bucket_name, destination_blob_name
+    ):
         """
         Uploads a Parquet file to Google Cloud Storage (GCS).
 
@@ -126,10 +130,9 @@ class GoogleServices:
         """
 
         # Initialize a GCS client
-        client:storage.Client = self.storage_client
+        client: storage.Client = self.storage_client
 
         if Path(local_file_path).exists():
-
             # Get the bucket
             bucket = client.bucket(bucket_name)
 
@@ -139,10 +142,12 @@ class GoogleServices:
             # Upload the file
             blob.upload_from_filename(local_file_path)
 
-            print(f"File {local_file_path} uploaded to gs://{bucket_name}/{destination_blob_name}")
+            print(
+                f"File {local_file_path} uploaded to gs://{bucket_name}/{destination_blob_name}"
+            )
 
             return f"gs://{bucket_name}/{destination_blob_name}"
-        
+
         return None
 
     # # Example Usage:
@@ -157,6 +162,7 @@ class GoogleServices:
 
         return None
 
+
 def remove_dir(folder_path):
     try:
         shutil.rmtree(folder_path)
@@ -166,15 +172,15 @@ def remove_dir(folder_path):
     except OSError as e:
         print(f"Error deleting folder '{folder_path}': {e}")
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     # try:
     #     gservice = GoogleServices('ads-txt-validator', r".secrets/ads-txt-validator-BQ.json")
 
     #     storage_uri = gservice.upload_parquet_to_gcs(r"data_output\2025-03-19\ads_txt_metadata_2025-03-19-07-38-33.parquet","ads_txy_bucket_db","bronze/ads_txt_metadata/metadata.parquet")
 
     #     gservice.replace_gcs_parquet_to_bq(storage_uri, dataset_id="ads_txt_scraper_data", table_id="domain_meta_data")
-    
+
     # finally:
     #     gservice.service_close()
 
