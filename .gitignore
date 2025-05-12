@@ -31,3 +31,6 @@ scrapy_logs/*
 !data_output/.gitkeep
 !Log_files/.gitkeep
 !scrapy_logs/.gitkeep
+
+# DUCKDB
+*.duckdb
