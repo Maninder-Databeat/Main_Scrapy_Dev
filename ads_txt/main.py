@@ -39,6 +39,17 @@ def run_spider(start_urls_with_meta, project_setting, is_test=True):
         ] = False
         start_urls_with_meta = [
             (
+                "100tattoos.com",
+                defaultdict(
+                    None,
+                    {
+                        "http_client": "curl_cffi",
+                        "inventory_type": "ads.txt",
+                        "ads_txt_page_url": "",
+                    },
+                ),
+            ),
+            (
                 "www.citationmachine.net",
                 defaultdict(
                     None,
@@ -109,12 +120,14 @@ if __name__ == "__main__":
     try:
         gservice = GoogleServices(project_id, service_account_file_path)
 
-        # query = """ SELECT domain, inventory_type, ads_page_url, http_client FROM `ads-txt-validator.ads_txt_scraper_data.start_urls_table` """
-        # df = gservice.query_bq_to_pd(query)
-        google_sheet_id = "1DLevo_k0LTfIHH7wL9n08NfYnpq_CbSF5RLNIMaIJU8"
-        worksheet_name = "main_file"
+        query = """ SELECT domain, inventory_type, ads_page_url, http_client FROM `ads-txt-validator.ads_txt_scraper_data.start_urls_table` """
+        df = gservice.query_bq_to_pd(query)
 
-        df = gservice.adhoc_gsheet_pull(google_sheet_id, worksheet_name)
+        # If google sheet input is required. (Do Not change this file, make copy of this one)
+        # google_sheet_id = "1DLevo_k0LTfIHH7wL9n08NfYnpq_CbSF5RLNIMaIJU8"
+        # worksheet_name = "main_file"
+
+        # df = gservice.adhoc_gsheet_pull(google_sheet_id, worksheet_name)
 
         df.drop(
             columns=[

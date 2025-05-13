@@ -33,6 +33,8 @@ class ScraperSpider(scrapy.Spider):
             inventory_type = meta_data.get("inventory_type", "ads.txt").strip()
             http_client = meta_data.get("http_client", "curl_cffi").strip()
             ads_txt_page_url = meta_data.get("ads_txt_page_url", "").strip()
+            meta_data["check_root_domain"] = True
+            # self.logger.info(f"{meta_data=}")
 
             if not ScraperSpider.is_valid_domain_url(domain):
                 if domain is None:
@@ -84,18 +86,18 @@ class ScraperSpider(scrapy.Spider):
         """Generates possible `ads.txt` or `app-ads.txt` URLs for a given domain."""
         parsed = tldextract.extract(domain)
         main_domain = f"{parsed.domain}.{parsed.suffix}"
-        filename = inventory_type.strip()
+        inventory_type = inventory_type.strip()
 
         urls = [
-            f"https://www.{main_domain}/{filename}",
-            f"https://{main_domain}/{filename}",
-            f"http://www.{main_domain}/{filename}",
-            f"http://{main_domain}/{filename}",
+            f"https://www.{main_domain}/{inventory_type}",
+            f"https://{main_domain}/{inventory_type}",
+            f"http://www.{main_domain}/{inventory_type}",
+            f"http://{main_domain}/{inventory_type}",
         ]
 
         if parsed.subdomain and parsed.subdomain.lower() != "www":
-            urls.insert(0, f"https://{parsed.subdomain}.{main_domain}/{filename}")
-            urls.insert(1, f"http://{parsed.subdomain}.{main_domain}/{filename}")
+            urls.insert(0, f"https://{parsed.subdomain}.{main_domain}/{inventory_type}")
+            urls.insert(1, f"http://{parsed.subdomain}.{main_domain}/{inventory_type}")
 
         return urls
 
@@ -108,9 +110,10 @@ class ScraperSpider(scrapy.Spider):
             self.logger.info(
                 f"Invalid ads.txt content at {response.url}, retrying next..."
             )
+            # if response_meta["attempts"] < len(response_meta["url_list"]):
             yield from self.retry_next(response_meta)
             # self.logger.warning(f"{not (response_meta["attempts"] < len(response_meta["url_list"]))=} for the url {response_meta["original_domain"]}")
-            if not (response_meta["attempts"] < len(response_meta["url_list"])):
+            if not (response_meta["attempts"] <= len(response_meta["url_list"])):
                 response_code = response.status
                 error_msg = repr_error_msg = "ads_txt_page_not_found"
                 inventory_type = response_meta.get("inventory_type", "NA")
@@ -183,7 +186,7 @@ class ScraperSpider(scrapy.Spider):
 
         return (
             self.retry_next(meta)
-            if meta["attempts"] < len(meta["url_list"])
+            if meta["attempts"] <= len(meta["url_list"])
             else self.log_failure(
                 original_domain,
                 error_msg,
@@ -196,7 +199,7 @@ class ScraperSpider(scrapy.Spider):
         )
 
     def retry_next(self, meta):
-        """Retries the next URL in the list if available."""
+        """Retries the next URL in the list if available, or checks if the root domain has changed."""
         attempts = meta["attempts"]
         url_list = meta["url_list"]
 
@@ -208,6 +211,68 @@ class ScraperSpider(scrapy.Spider):
                 callback=self.parse_ads_txt,
                 errback=self.handle_error,
                 meta={**meta, "attempts": attempts + 1},
+            )
+        else:
+            # All attempts failed, check if the root domain has changed
+            original_domain = meta["original_domain"]
+            self.logger.info(
+                f"All attempts failed for {original_domain}. Checking root domain..."
+            )
+
+            root_domain_url = f"https://{original_domain}"
+            yield scrapy.Request(
+                url=root_domain_url,
+                callback=self.check_root_domain,
+                errback=self.handle_error,
+                meta={**meta, "attempts": attempts + 1},
+            )
+
+    def check_root_domain(self, response: Response):
+        """Checks if the root domain has changed and retries with the new domain if applicable."""
+        meta = response.meta
+        original_domain = meta["original_domain"]
+
+        # Extract the new root domain from the response URL
+        parsed = tldextract.extract(original_domain)
+        old_root_domain = f"{parsed.domain}.{parsed.suffix}"
+
+        # Extract the new root domain from the response URL
+        parsed = tldextract.extract(response.url)
+        new_root_domain = f"{parsed.domain}.{parsed.suffix}"
+        # self.logger.info(f"{old_root_domain} for {meta=}")
+        check_root_domain_bool = meta["meta_data"]["check_root_domain"]
+
+        if (new_root_domain != old_root_domain) and check_root_domain_bool:
+            check_root_domain_bool = False
+            # self.logger.debug(f"{meta["check_root_domain"]=}")
+            self.logger.info(
+                f"Root domain changed from {original_domain} to {new_root_domain}. Retrying..."
+            )
+            meta["original_domain"] = new_root_domain
+            meta["url_list"] = self.generate_ads_txt_urls(
+                new_root_domain, meta["inventory_type"]
+            )
+            meta["attempts"] = 0  # Reset attempts for the new domain
+
+            # Start the process again with the new root domain
+            yield scrapy.Request(
+                url=meta["url_list"][0],
+                callback=self.parse_ads_txt,
+                errback=self.handle_error,
+                meta=meta,
+            )
+        else:
+            self.logger.info(
+                f"Root domain has not changed for {original_domain}. Logging failure..."
+            )
+            yield from self.log_failure(
+                original_domain,
+                "all_attempts_failed",
+                "all_attempts_failed",
+                response.status,
+                self.header_json_str(response),
+                meta.get("inventory_type", "NA"),
+                meta.get("http_client", "NA"),
             )
 
     def log_failure(
@@ -221,7 +286,7 @@ class ScraperSpider(scrapy.Spider):
         http_client,
     ):
         """Logs failure and saves error details."""
-        self.logger.warning(f"Failed to find ads.txt for {domain}")
+        self.logger.warning(f"Failed to find {inventory_type} for {domain}")
         yield AdsTxtErrorItem(
             domain=domain,
             error_msg=error_msg,

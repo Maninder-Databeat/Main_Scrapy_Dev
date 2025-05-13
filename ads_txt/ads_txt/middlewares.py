@@ -103,6 +103,7 @@ class AdsTxtDownloaderMiddleware:
     def spider_opened(self, spider):
         spider.logger.info("Spider opened: %s" % spider.name)
 
+
 # import certifi
 # import truststore
 # import ssl
@@ -116,37 +117,63 @@ from scrapy.http.request import Request
 # CUSTOM_SSL_CONTEXT = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # Uses system certificates
 # CUSTOM_SSL_CONTEXT.load_verify_locations(certifi.where())  # Add Mozilla certs
 
+
 class DynamicHttpClientMiddleware:
     """Middleware to dynamically choose HTTP client based on request metadata."""
-    
-    async def process_request(self, request:Request, spider):
+
+    async def process_request(self, request: Request, spider):
         """Check request metadata and decide which HTTP client to use."""
-        
+
         http_client = request.meta.get("http_client", "default")  # Default is Scrapy
 
         if http_client == "curl_cffi":
             return await self.use_curl_cffi(request, spider)
         return None  # Use Scrapy's default downloader
 
-    async def use_curl_cffi(self, request:Request, spider:Spider):
+    async def use_curl_cffi(self, request: Request, spider: Spider):
         """Use curl-cffi for the request."""
         spider.logger.info(f"Using curl-cffi for {request.url}")
         try:
             try:
                 async with curl_async_session() as client:
-                    response = await client.get(request.url, timeout=10, impersonate="chrome", allow_redirects=True, verify=True)
-                    request.meta['ssl_verify'] = True
+                    response = await client.get(
+                        request.url,
+                        timeout=10,
+                        impersonate="chrome",
+                        allow_redirects=True,
+                        verify=True,
+                        max_redirects=5,
+                    )
+                    request.meta["ssl_verify"] = True
             except Exception as e:
-                spider.logger.warning(f"SSL Error or other exception for {request.url}: {e}. Retrying with custom SSL context.")
+                spider.logger.warning(
+                    f"SSL Error or other exception for {request.url}: {e}. Retrying with custom SSL context."
+                )
                 async with curl_async_session() as client:
-                    response = await client.get(request.url, timeout=10, impersonate="chrome", allow_redirects=True, verify=False)
-                    request.meta['ssl_verify'] = False
-            
-            # (Removed content-encoding because if passed in html response it will raise error due to double compression)
-            headers_dict = {k: [v] for k, v in response.headers.items() if k.lower() != "content-encoding"}  # Converts curl_cffi headers 
+                    response = await client.get(
+                        request.url,
+                        timeout=10,
+                        impersonate="chrome",
+                        allow_redirects=True,
+                        verify=False,
+                        max_redirects=5,
+                    )
+                    request.meta["ssl_verify"] = False
 
-            
-            return HtmlResponse(url=request.url, body=response.content, request=request, status=response.status_code, headers=headers_dict)
+            # (Removed content-encoding because if passed in html response it will raise error due to double compression)
+            headers_dict = {
+                k: [v]
+                for k, v in response.headers.items()
+                if k.lower() != "content-encoding"
+            }  # Converts curl_cffi headers
+
+            return HtmlResponse(
+                url=response.url,
+                body=response.content,
+                request=request,
+                status=response.status_code,
+                headers=headers_dict,
+            )
         except Exception as e:
             spider.logger.error(f"curl-cffi request failed for {request.url}: {e}")
         return None  # Fall back to Scrapy
