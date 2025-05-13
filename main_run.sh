@@ -29,8 +29,8 @@ cd "$project_dir"
 source $project_dir/.venv/bin/activate
 
 # Replace 'your_python_file.py' with the actual name of your Python file
-# python3 $project_dir/ads_txt/main_ss_BD.py
-python3 $project_dir/ads_txt/main.py
+python3 $project_dir/ads_txt/main_ss_BD.py
+# python3 $project_dir/ads_txt/main.py
 # >> $project_dir/main_start.log 2>&1
 
 # Deactivate venv
