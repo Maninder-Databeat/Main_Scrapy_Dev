@@ -1,7 +1,7 @@
 import datetime
 import json
 import re
-from urllib.parse import urlparse
+# from urllib.parse import urlparse
 
 import scrapy
 import tldextract
@@ -34,16 +34,21 @@ class ScraperSpider(scrapy.Spider):
             http_client = meta_data.get("http_client", "curl_cffi").strip()
             ads_txt_page_url = meta_data.get("ads_txt_page_url", "").strip()
             meta_data["check_root_domain"] = True
+            meta_data["add_new_domain_if_found"] = True
             # self.logger.info(f"{meta_data=}")
 
-            if not ScraperSpider.is_valid_domain_url(domain):
+            is_valid, message = ScraperSpider.check_if_valid_url(domain)
+
+            if not is_valid:
                 if domain is None:
                     domain = "None"
-                self.logger.info(f"given str is not valid domain or url: {domain}")
+                self.logger.info(
+                    f"given str is not valid domain or url: {domain} and {message=}"
+                )
 
                 yield from self.log_failure(
                     domain,
-                    "not_valid_domain_or_url",
+                    message,
                     "not_valid_domain_or_url",
                     "NA",
                     "NA",
@@ -84,6 +89,10 @@ class ScraperSpider(scrapy.Spider):
 
     def generate_ads_txt_urls(self, domain, inventory_type):
         """Generates possible `ads.txt` or `app-ads.txt` URLs for a given domain."""
+
+        # Clean the string: strip spaces and remove non-printing characters
+        domain = "".join(ch for ch in domain.strip() if ch.isprintable())
+
         parsed = tldextract.extract(domain)
         main_domain = f"{parsed.domain}.{parsed.suffix}"
         inventory_type = inventory_type.strip()
@@ -96,8 +105,14 @@ class ScraperSpider(scrapy.Spider):
         ]
 
         if parsed.subdomain and parsed.subdomain.lower() != "www":
-            urls.insert(0, f"https://{parsed.subdomain}.{main_domain}/{inventory_type}")
-            urls.insert(1, f"http://{parsed.subdomain}.{main_domain}/{inventory_type}")
+            urls.insert(
+                0,
+                f"https://{parsed.subdomain + '.' if parsed.subdomain else ''}{main_domain}/{inventory_type}",
+            )
+            urls.insert(
+                1,
+                f"http://{parsed.subdomain + '.' if parsed.subdomain else ''}{main_domain}/{inventory_type}",
+            )
 
         return urls
 
@@ -105,11 +120,34 @@ class ScraperSpider(scrapy.Spider):
         """Validates `ads.txt`, retries if invalid."""
         ads_txt_line = response.text.strip()
         response_meta = response.meta
+        original_domain = response_meta["original_domain"]
 
         if not self.is_valid_ads_txt(ads_txt_line):
             self.logger.info(
                 f"Invalid ads.txt content at {response.url}, retrying next..."
             )
+            is_domain_same = ScraperSpider.is_original_or_new_domain_same(
+                original_domain, response.url
+            )
+
+            # self.logger.info(f"{old_root_domain} for {meta=}")
+            new_domain_bool = response_meta["meta_data"]["add_new_domain_if_found"]
+
+            if (not is_domain_same) and new_domain_bool:
+                new_domain_bool = False  #  only one time
+
+                parsed = tldextract.extract(response.url)
+                new_root_domain = f"{parsed.domain}.{parsed.suffix}"
+
+                self.logger.info(
+                    f"New domain changed from {original_domain} to {new_root_domain}. Retrying..."
+                )
+
+                (response_meta["url_list"]).extend(
+                    self.generate_ads_txt_urls(
+                        new_root_domain, response_meta["inventory_type"]
+                    )
+                )
             # if response_meta["attempts"] < len(response_meta["url_list"]):
             yield from self.retry_next(response_meta)
             # self.logger.warning(f"{not (response_meta["attempts"] < len(response_meta["url_list"]))=} for the url {response_meta["original_domain"]}")
@@ -161,6 +199,26 @@ class ScraperSpider(scrapy.Spider):
             or "ownerdomain=" in content_str
             or "xandr.com," in content_str
             or "pubmatic.com," in content_str
+            or "adform.com," in content_str
+            or "appnexus.com," in content_str
+            or "improvedigital.com," in content_str
+            or "netlink.vn," in content_str
+            or "rubiconproject.com," in content_str
+            or "freewheel.tv," in content_str
+            or "33across.com," in content_str
+            or "aps.amazon.com," in content_str
+            or "contextweb.com," in content_str
+            or "conversantmedia.com," in content_str
+            or "indexexchange.com," in content_str
+            or "adingo.jp," in content_str
+            or "facebook.com," in content_str
+            or "video.unrulymedia.com," in content_str
+            or "admixer.net," in content_str
+            or "applovin.com," in content_str
+            or "hoppex.hu," in content_str
+            or "adswizz.com," in content_str
+            or "applovin.com," in content_str
+            or "applovin.com," in content_str
         )
 
     def handle_error(self, failure):
@@ -232,23 +290,23 @@ class ScraperSpider(scrapy.Spider):
         meta = response.meta
         original_domain = meta["original_domain"]
 
-        # Extract the new root domain from the response URL
-        parsed = tldextract.extract(original_domain)
-        old_root_domain = f"{parsed.domain}.{parsed.suffix}"
+        is_domain_same = ScraperSpider.is_original_or_new_domain_same(
+            original_domain, response.url
+        )
 
-        # Extract the new root domain from the response URL
-        parsed = tldextract.extract(response.url)
-        new_root_domain = f"{parsed.domain}.{parsed.suffix}"
         # self.logger.info(f"{old_root_domain} for {meta=}")
         check_root_domain_bool = meta["meta_data"]["check_root_domain"]
 
-        if (new_root_domain != old_root_domain) and check_root_domain_bool:
+        if (not is_domain_same) and check_root_domain_bool:
             check_root_domain_bool = False
             # self.logger.debug(f"{meta["check_root_domain"]=}")
+            parsed = tldextract.extract(response.url)
+            new_root_domain = f"{parsed.domain}.{parsed.suffix}"
+
             self.logger.info(
                 f"Root domain changed from {original_domain} to {new_root_domain}. Retrying..."
             )
-            meta["original_domain"] = new_root_domain
+            # meta["original_domain"] = new_root_domain
             meta["url_list"] = self.generate_ads_txt_urls(
                 new_root_domain, meta["inventory_type"]
             )
@@ -387,22 +445,40 @@ class ScraperSpider(scrapy.Spider):
         print("Time Passed (HH:MM:SS):", time_passed_str)
 
     @staticmethod
-    def is_valid_url(url):
-        try:
-            parsed = urlparse(url)
-            return parsed.scheme in ("http", "https") and bool(parsed.netloc)
-        except Exception:
-            return False
+    def check_if_valid_url(input_string):
+        # Clean the string: strip spaces and remove non-printing characters
+        cleaned = "".join(ch for ch in input_string.strip() if ch.isprintable())
 
-    @staticmethod
-    def is_valid_domain(domain):
-        domain_regex = re.compile(r"^(?!-)(?:[a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,}$")
-        return bool(domain_regex.fullmatch(domain))
+        # If the cleaned string is empty
+        if not cleaned:
+            return (False, "Invalid (Empty or Non-printing)")
 
-    @staticmethod
-    def is_valid_domain_url(input_str):
-        if input_str is None:
-            return False
-        return ScraperSpider.is_valid_url(input_str) or ScraperSpider.is_valid_domain(
-            input_str
+        # Regex to match URLs
+        url_pattern = re.compile(
+            r"^(https?://)?"  # optional scheme
+            r"(www\.)?"  # optional www
+            r"([a-zA-Z0-9-]+\.)+"  # domain/subdomain
+            r"[a-zA-Z]{2,}"  # TLD like .com, .in, etc.
+            r"(/[\w\-./]*)*$",  # optional path
+            re.IGNORECASE,
         )
+
+        if url_pattern.match(cleaned):
+            return (True, "Valid URL")
+        else:
+            return (False, "Not a URL")
+
+    @staticmethod
+    def is_original_or_new_domain_same(original_domain, new_domain):
+        # Clean the string: strip spaces and remove non-printing characters
+        original_domain = "".join(
+            ch for ch in original_domain.strip() if ch.isprintable()
+        )
+        # Extract the new root domain from the response URL
+        parsed = tldextract.extract(original_domain)
+        old_root_domain = f"{parsed.domain}.{parsed.suffix}"
+        # Extract the new root domain from the response URL
+        parsed = tldextract.extract(new_domain)
+        new_root_domain = f"{parsed.domain}.{parsed.suffix}"
+
+        return old_root_domain == new_root_domain

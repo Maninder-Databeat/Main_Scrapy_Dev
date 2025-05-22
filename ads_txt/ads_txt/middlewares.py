@@ -107,7 +107,8 @@ class AdsTxtDownloaderMiddleware:
 # import certifi
 # import truststore
 # import ssl
-from curl_cffi.requests import AsyncSession as curl_async_session
+from curl_cffi.requests import AsyncSession as curl_async_session, errors
+from curl_cffi import requests
 from scrapy.http import HtmlResponse
 from scrapy.http.request import Request
 
@@ -135,7 +136,9 @@ class DynamicHttpClientMiddleware:
         spider.logger.info(f"Using curl-cffi for {request.url}")
         try:
             try:
+                # spider.logger.info(f"Using curl-cffi for {request.url} - 2")
                 async with curl_async_session() as client:
+                    # spider.logger.info(f"Using curl-cffi for {request.url} - 3")
                     response = await client.get(
                         request.url,
                         timeout=10,
@@ -145,7 +148,10 @@ class DynamicHttpClientMiddleware:
                         max_redirects=5,
                     )
                     request.meta["ssl_verify"] = True
-            except Exception as e:
+                    # spider.logger.info(f"Using curl-cffi for {request.url} - 4")
+                    # response.e
+
+            except errors.CurlError as e:
                 spider.logger.warning(
                     f"SSL Error or other exception for {request.url}: {e}. Retrying with custom SSL context."
                 )
@@ -174,6 +180,8 @@ class DynamicHttpClientMiddleware:
                 status=response.status_code,
                 headers=headers_dict,
             )
-        except Exception as e:
+        except errors.CurlError as e:
             spider.logger.error(f"curl-cffi request failed for {request.url}: {e}")
+        except Exception as e:
+            spider.logger.error(f"The request failed for {request.url}: {e}")
         return None  # Fall back to Scrapy

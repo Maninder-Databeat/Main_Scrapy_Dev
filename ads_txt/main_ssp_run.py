@@ -54,7 +54,7 @@ def run_spider(start_urls_with_meta, project_setting, is_test=True):
                 defaultdict(
                     None,
                     {
-                        "http_client": "default",
+                        "http_client": "curl_cffi",
                         "inventory_type": "app-ads.txt",
                         "ads_txt_page_url": "",
                     },
@@ -78,6 +78,28 @@ def run_spider(start_urls_with_meta, project_setting, is_test=True):
                     {
                         "http_client": "default",
                         "inventory_type": "app-ads.txt",
+                        "ads_txt_page_url": "",
+                    },
+                ),
+            ),
+            (
+                "curse.com",
+                defaultdict(
+                    None,
+                    {
+                        "http_client": "curl_cffi",
+                        "inventory_type": "ads.txt",
+                        "ads_txt_page_url": "",
+                    },
+                ),
+            ),
+            (
+                "axios.com/",
+                defaultdict(
+                    None,
+                    {
+                        "http_client": "curl_cffi",
+                        "inventory_type": "ads.txt",
                         "ads_txt_page_url": "",
                     },
                 ),
