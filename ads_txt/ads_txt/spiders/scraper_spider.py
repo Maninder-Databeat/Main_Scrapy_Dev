@@ -134,7 +134,7 @@ class ScraperSpider(scrapy.Spider):
             new_domain_bool = response_meta["meta_data"]["add_new_domain_if_found"]
 
             if (not is_domain_same) and new_domain_bool:
-                new_domain_bool = False  #  only one time
+                response_meta["meta_data"]["add_new_domain_if_found"] = False  #  only one time
 
                 parsed = tldextract.extract(response.url)
                 new_root_domain = f"{parsed.domain}.{parsed.suffix}"
@@ -298,7 +298,7 @@ class ScraperSpider(scrapy.Spider):
         check_root_domain_bool = meta["meta_data"]["check_root_domain"]
 
         if (not is_domain_same) and check_root_domain_bool:
-            check_root_domain_bool = False
+            meta["meta_data"]["check_root_domain"] = False
             # self.logger.debug(f"{meta["check_root_domain"]=}")
             parsed = tldextract.extract(response.url)
             new_root_domain = f"{parsed.domain}.{parsed.suffix}"
