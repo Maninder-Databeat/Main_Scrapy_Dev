@@ -104,6 +104,17 @@ def run_spider(start_urls_with_meta, project_setting, is_test=True):
                     },
                 ),
             ),
+            (
+                "olx.com",
+                defaultdict(
+                    None,
+                    {
+                        "http_client": "curl_cffi",
+                        "inventory_type": "ads.txt",
+                        "ads_txt_page_url": "",
+                    },
+                ),
+            ),
         ]
 
     # Start the Scrapy crawler
@@ -192,5 +203,5 @@ if __name__ == "__main__":
         for _, row in df.iterrows()
     ]
     del df
-    run_spider(start_urls_with_meta, project_setting=settings, is_test=False)
+    run_spider(start_urls_with_meta, project_setting=settings, is_test=True)
     logger.info("Spider crawl finished")
