@@ -164,7 +164,7 @@ if __name__ == "__main__":
     finally:
         gservice.service_close()
 
-    logger.info(df)
+    # logger.info(df)
     logger.info(df.dtypes)
 
     # df = df.head(10)
@@ -203,5 +203,5 @@ if __name__ == "__main__":
         for _, row in df.iterrows()
     ]
     del df
-    run_spider(start_urls_with_meta, project_setting=settings, is_test=True)
+    run_spider(start_urls_with_meta, project_setting=settings, is_test=False)
     logger.info("Spider crawl finished")
