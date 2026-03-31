@@ -117,70 +117,119 @@ class AdsTxtPipeline:
 
         return item
 
+    # def close_spider(self, spider: Spider):
+    #     """Write remaining data to Parquet when the spider finishes"""
+    #     spider.logger.critical(spider.crawler.stats.get_stats())
+
+    #     try:
+    #         gservice = GoogleServices(self.PROJECT_ID, self.SERVICE_ACCOUNT_JSON_PATH)
+
+    #         if self.success_data:
+    #             self.append_to_parquet(
+    #                 self.success_data, self.LOCAL_SUCCESS_FILE_PATH, df_concat=True
+    #             )
+
+    #         if self.failure_data:
+    #             self.append_to_parquet(self.failure_data, self.LOCAL_FAILURE_FILE_PATH)
+
+    #         if self.metadata_data:
+    #             self.append_to_parquet(
+    #                 self.metadata_data, self.LOCAL_METADATA_FILE_PATH
+    #             )
+
+    #         spider.logger.info(f"{self.UPLOAD_TO_GCS=}")
+    #         if self.UPLOAD_TO_GCS:
+    #             # if False:
+    #             ads_txt_success_uri = gservice.upload_parquet_to_gcs(
+    #                 self.LOCAL_SUCCESS_FILE_PATH, self.GCS_BUCKET, self.GCS_SUCCESS_GRI
+    #             )
+    #             ads_txt_failure_uri = gservice.upload_parquet_to_gcs(
+    #                 self.LOCAL_FAILURE_FILE_PATH, self.GCS_BUCKET, self.GCS_FAILURE_GRI
+    #             )
+    #             ads_txt_metadata_uri = gservice.upload_parquet_to_gcs(
+    #                 self.LOCAL_METADATA_FILE_PATH,
+    #                 self.GCS_BUCKET,
+    #                 self.GCS_METADATA_GRI,
+    #             )
+
+    #             spider.logger.info(f"{self.UPLOAD_GCS_TO_BQ=}")
+    #             if self.UPLOAD_GCS_TO_BQ:
+    #                 # if False:
+    #                 dataset_id = self.BQ_DATASET_ID
+    #                 if ads_txt_success_uri:
+    #                     gservice.replace_gcs_parquet_to_bq(
+    #                         ads_txt_success_uri,
+    #                         dataset_id,
+    #                         self.ADS_TXT_SUCCESS_BQ_TABLE_ID,
+    #                     )
+    #                 if ads_txt_failure_uri:
+    #                     gservice.replace_gcs_parquet_to_bq(
+    #                         ads_txt_failure_uri,
+    #                         dataset_id,
+    #                         self.ADS_TXT_FAILURE_BQ_TABLE_ID,
+    #                     )
+    #                 if ads_txt_metadata_uri:
+    #                     gservice.replace_gcs_parquet_to_bq(
+    #                         ads_txt_metadata_uri,
+    #                         dataset_id,
+    #                         self.ADS_TXT_METADATA_BQ_TABLE_ID,
+    #                     )
+
+    #         spider.logger.info(f"{self.REMOVE_SAME_DAY_OUTPUT_FILES=}")
+    #         if self.REMOVE_SAME_DAY_OUTPUT_FILES:
+    #             remove_dir(self.ROOT_DATA_OUTPUT)
+
+    #     finally:
+    #         gservice.service_close()
+
     def close_spider(self, spider: Spider):
-        """Write remaining data to Parquet when the spider finishes"""
         spider.logger.critical(spider.crawler.stats.get_stats())
 
+        # Always flush remaining local data first (no cloud dependency)
+        if self.success_data:
+            self.append_to_parquet(self.success_data, self.LOCAL_SUCCESS_FILE_PATH, df_concat=True)
+        if self.failure_data:
+            self.append_to_parquet(self.failure_data, self.LOCAL_FAILURE_FILE_PATH)
+        if self.metadata_data:
+            self.append_to_parquet(self.metadata_data, self.LOCAL_METADATA_FILE_PATH)
+
+        gservice = None
         try:
-            gservice = GoogleServices(self.PROJECT_ID, self.SERVICE_ACCOUNT_JSON_PATH)
+            if self.UPLOAD_TO_GCS or self.UPLOAD_GCS_TO_BQ:
+                gservice = GoogleServices(self.PROJECT_ID, self.SERVICE_ACCOUNT_JSON_PATH)
 
-            if self.success_data:
-                self.append_to_parquet(
-                    self.success_data, self.LOCAL_SUCCESS_FILE_PATH, df_concat=True
-                )
+                spider.logger.info(f"{self.UPLOAD_TO_GCS=}")
+                if self.UPLOAD_TO_GCS:
+                    ads_txt_success_uri = gservice.upload_parquet_to_gcs(
+                        self.LOCAL_SUCCESS_FILE_PATH, self.GCS_BUCKET, self.GCS_SUCCESS_GRI
+                    )
+                    ads_txt_failure_uri = gservice.upload_parquet_to_gcs(
+                        self.LOCAL_FAILURE_FILE_PATH, self.GCS_BUCKET, self.GCS_FAILURE_GRI
+                    )
+                    ads_txt_metadata_uri = gservice.upload_parquet_to_gcs(
+                        self.LOCAL_METADATA_FILE_PATH, self.GCS_BUCKET, self.GCS_METADATA_GRI
+                    )
 
-            if self.failure_data:
-                self.append_to_parquet(self.failure_data, self.LOCAL_FAILURE_FILE_PATH)
-
-            if self.metadata_data:
-                self.append_to_parquet(
-                    self.metadata_data, self.LOCAL_METADATA_FILE_PATH
-                )
-
-            spider.logger.info(f"{self.UPLOAD_TO_GCS=}")
-            if self.UPLOAD_TO_GCS:
-                # if False:
-                ads_txt_success_uri = gservice.upload_parquet_to_gcs(
-                    self.LOCAL_SUCCESS_FILE_PATH, self.GCS_BUCKET, self.GCS_SUCCESS_GRI
-                )
-                ads_txt_failure_uri = gservice.upload_parquet_to_gcs(
-                    self.LOCAL_FAILURE_FILE_PATH, self.GCS_BUCKET, self.GCS_FAILURE_GRI
-                )
-                ads_txt_metadata_uri = gservice.upload_parquet_to_gcs(
-                    self.LOCAL_METADATA_FILE_PATH,
-                    self.GCS_BUCKET,
-                    self.GCS_METADATA_GRI,
-                )
-
-                spider.logger.info(f"{self.UPLOAD_GCS_TO_BQ=}")
-                if self.UPLOAD_GCS_TO_BQ:
-                    # if False:
-                    dataset_id = self.BQ_DATASET_ID
-                    if ads_txt_success_uri:
-                        gservice.replace_gcs_parquet_to_bq(
-                            ads_txt_success_uri,
-                            dataset_id,
-                            self.ADS_TXT_SUCCESS_BQ_TABLE_ID,
-                        )
-                    if ads_txt_failure_uri:
-                        gservice.replace_gcs_parquet_to_bq(
-                            ads_txt_failure_uri,
-                            dataset_id,
-                            self.ADS_TXT_FAILURE_BQ_TABLE_ID,
-                        )
-                    if ads_txt_metadata_uri:
-                        gservice.replace_gcs_parquet_to_bq(
-                            ads_txt_metadata_uri,
-                            dataset_id,
-                            self.ADS_TXT_METADATA_BQ_TABLE_ID,
-                        )
+                    spider.logger.info(f"{self.UPLOAD_GCS_TO_BQ=}")
+                    if self.UPLOAD_GCS_TO_BQ:
+                        dataset_id = self.BQ_DATASET_ID
+                        if ads_txt_success_uri:
+                            gservice.replace_gcs_parquet_to_bq(ads_txt_success_uri, dataset_id, self.ADS_TXT_SUCCESS_BQ_TABLE_ID)
+                        if ads_txt_failure_uri:
+                            gservice.replace_gcs_parquet_to_bq(ads_txt_failure_uri, dataset_id, self.ADS_TXT_FAILURE_BQ_TABLE_ID)
+                        if ads_txt_metadata_uri:
+                            gservice.replace_gcs_parquet_to_bq(ads_txt_metadata_uri, dataset_id, self.ADS_TXT_METADATA_BQ_TABLE_ID)
 
             spider.logger.info(f"{self.REMOVE_SAME_DAY_OUTPUT_FILES=}")
             if self.REMOVE_SAME_DAY_OUTPUT_FILES:
                 remove_dir(self.ROOT_DATA_OUTPUT)
 
+        except Exception as e:
+            spider.logger.error(f"Error in pipeline close_spider: {e}", exc_info=True)
+
         finally:
-            gservice.service_close()
+            if gservice:
+                gservice.service_close()
 
     def ensure_directory(self, folder):
         """Ensure the folder exists and is not a conflicting file"""
@@ -203,5 +252,18 @@ class AdsTxtPipeline:
         if not df.empty:
             if os.path.exists(file_path):
                 df.to_parquet(file_path, engine="fastparquet", append=True)
+                # Save XLSX in parallel
+                self.write_excel(df, file_path)
             else:
                 df.to_parquet(file_path, engine="fastparquet")
+                # Save XLSX in parallel
+                self.write_excel(df, file_path)
+
+    def write_excel(self, df: pd.DataFrame, file_path: Path):
+        excel_path = file_path.with_suffix(".xlsx")
+        try:
+            df.to_excel(excel_path, index=False, engine="openpyxl")
+            return excel_path
+        except Exception as e:
+        
+            return None

@@ -42,17 +42,18 @@ CUSTOM_RUN_SETTINGS = {
     "CLOUD_SAVE": {
         "SERVICE_ACCOUNT_JSON_PATH": CURRENT_WORKING_DIR
         / ".secrets"
-        / os.getenv("SERVICE_ACCOUNT_FILE_NAME"),
+        # / os.getenv("SERVICE_ACCOUNT_FILE_NAME"),
+        / (os.getenv("SERVICE_ACCOUNT_FILE_NAME") or "dummy_sa.json"),
         "PROJECT_ID": "ads-txt-validator",
         "TO_GCS": {
-            "UPLOAD_TO_GCS": True,
+            "UPLOAD_TO_GCS": False,
             "GCS_BUCKET": os.getenv("GCS_BUCKET"),
             "GCS_SUCCESS_GRI": f"bronze/ads_txt_success/{utc_date_str}/ads_txt_success_{file_suffix}.parquet",
             "GCS_FAILURE_GRI": f"bronze/ads_txt_failure/{utc_date_str}/ads_txt_failure_{file_suffix}.parquet",
             "GCS_METADATA_GRI": f"bronze/ads_txt_metadata/{utc_date_str}/ads_txt_metadata_{file_suffix}.parquet",
         },
         "TO_BQ": {
-            "UPLOAD_GCS_TO_BQ": True,
+            "UPLOAD_GCS_TO_BQ": False,
             "BQ_DATASET_ID": os.getenv("BQ_DATASET_ID"),
             "ADS_TXT_SUCCESS_BQ_TABLE_ID": "bronze_all_domains_today",
             "ADS_TXT_FAILURE_BQ_TABLE_ID": "domain_failure_data_today",
