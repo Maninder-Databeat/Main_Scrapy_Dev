@@ -119,7 +119,7 @@ class AdsTxtPipeline:
         self.metadata_data = []
 
         #########
-        self.inventorypartnerdata = set()
+        self.inventorypartnerdata = []
         #########
 
 
@@ -152,8 +152,15 @@ class AdsTxtPipeline:
         if isinstance(item, AdsTxtItem):
             inventory_partner_rows = self.build_inventory_partner_rows(item)
 
-            for row in inventory_partner_rows:
-                self.inventorypartnerdata.add(row["inventory_partner_domain"])
+            if inventory_partner_rows:
+                self.inventorypartnerdata.extend(inventory_partner_rows)
+
+                if len(self.inventorypartnerdata) >= self.BATCH_SIZE:
+                    self.append_to_parquet(
+                        self.inventorypartnerdata,
+                        self.LOCAL_INVENTORY_PARTNER_FILE_PATH
+                    )
+                    self.inventorypartnerdata = []
         ############
 
         # ✅ Save data periodically to prevent memory issues
@@ -250,9 +257,11 @@ class AdsTxtPipeline:
             self.append_to_parquet(self.metadata_data, self.LOCAL_METADATA_FILE_PATH)
 
         if self.inventorypartnerdata:
-            inventory_rows = [{"inventory_partner_domain": domain} for domain in self.inventorypartnerdata]
-            self.append_to_parquet(inventory_rows, self.LOCAL_INVENTORY_PARTNER_FILE_PATH)
-            self.inventorypartnerdata = set()
+            self.append_to_parquet(
+                self.inventorypartnerdata,
+                self.LOCAL_INVENTORY_PARTNER_FILE_PATH
+            )
+            self.inventorypartnerdata = []
 
         if self.LOCAL_INVENTORY_PARTNER_FILE_PATH.exists():
             inventory_df = pd.read_parquet(self.LOCAL_INVENTORY_PARTNER_FILE_PATH)
