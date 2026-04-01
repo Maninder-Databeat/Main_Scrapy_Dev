@@ -82,6 +82,19 @@ CUSTOM_RUN_SETTINGS["COMMON"]["LOCAL_METADATA_FILE_PATH"] = (
     / f"ads_txt_metadata_{file_suffix}.parquet"
 )
 
+#######
+
+CUSTOM_RUN_SETTINGS["COMMON"]["LOCAL_INVENTORY_PARTNER_FILE_PATH"] = (
+    CUSTOM_RUN_SETTINGS["COMMON"]["ROOT_DATA_OUTPUT"]
+    / f"ads_txt_inventory_partner_{file_suffix}.parquet"
+)
+CUSTOM_RUN_SETTINGS["COMMON"]["LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH"] = (
+    CUSTOM_RUN_SETTINGS["COMMON"]["ROOT_DATA_OUTPUT"]
+    / f"ads_txt_inventory_partner_{file_suffix}.xlsx"
+)
+
+########
+
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
 # USER_AGENT = "ads_txt (+http://www.yourdomain.com)"

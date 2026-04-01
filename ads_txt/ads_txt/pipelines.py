@@ -3,7 +3,7 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 import os
-
+import re
 # import datetime
 from pathlib import Path
 
@@ -48,6 +48,11 @@ class AdsTxtPipeline:
     LOCAL_SUCCESS_FILE_PATH: Path = common_settings.get("LOCAL_SUCCESS_FILE_PATH")
     LOCAL_FAILURE_FILE_PATH: Path = common_settings.get("LOCAL_FAILURE_FILE_PATH")
     LOCAL_METADATA_FILE_PATH: Path = common_settings.get("LOCAL_METADATA_FILE_PATH")
+    
+    ##########
+    LOCAL_INVENTORY_PARTNER_FILE_PATH: Path = common_settings.get("LOCAL_INVENTORY_PARTNER_FILE_PATH")
+    LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH: Path = common_settings.get("LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH")  
+    ##########
 
     # cloud save settings
     PROJECT_ID: str = cloud_settings.get("PROJECT_ID")
@@ -69,11 +74,54 @@ class AdsTxtPipeline:
         "ADS_TXT_METADATA_BQ_TABLE_ID"
     )
 
+    ##########
+    def extract_inventory_partner_domains(self, text):
+        if not text:
+            return []
+
+        matches = re.findall(
+            r"inventorypartnerdomain\s*=\s*([^,\s#]+)",
+            text,
+            flags=re.IGNORECASE
+        )
+
+        return list(dict.fromkeys(
+            match.strip().lower() for match in matches if match.strip()
+        ))
+
+
+    def build_inventory_partner_rows(self, item):
+        ads_txt_text = item.get("ads_txt_line", "")
+        inventory_type = item.get("inventory_type", "")
+        domain = item.get("domain", "")
+        ads_txt_url = item.get("ads_txt_url", "")
+        date = item.get("date", "")
+
+        inventory_domains = self.extract_inventory_partner_domains(ads_txt_text)
+
+        rows = []
+        for inventory_domain in inventory_domains:
+            rows.append({
+                # "domain": domain,
+                # "ads_txt_url": ads_txt_url,
+                # "inventory_type": inventory_type,
+                "inventory_partner_domain": inventory_domain,
+                # "date": date
+            })
+
+        return rows
+    ###########
+
     def open_spider(self, spider: Spider):
         """Initialize empty lists for batching before writing to Parquet"""
         self.success_data = []
         self.failure_data = []
         self.metadata_data = []
+
+        #########
+        self.inventorypartnerdata = set()
+        #########
+
 
         # Ensure folders exist and are not conflicting with single files
         # for folder in [self.success_file, self.failure_file, self.metadata_file]:
@@ -99,6 +147,14 @@ class AdsTxtPipeline:
             self.failure_data.append(dict(item))
         elif isinstance(item, AdsTxtMetadataItem):
             self.metadata_data.append(dict(item))
+
+        ############
+        if isinstance(item, AdsTxtItem):
+            inventory_partner_rows = self.build_inventory_partner_rows(item)
+
+            for row in inventory_partner_rows:
+                self.inventorypartnerdata.add(row["inventory_partner_domain"])
+        ############
 
         # ✅ Save data periodically to prevent memory issues
         if len(self.success_data) >= self.BATCH_SIZE:
@@ -192,6 +248,18 @@ class AdsTxtPipeline:
             self.append_to_parquet(self.failure_data, self.LOCAL_FAILURE_FILE_PATH)
         if self.metadata_data:
             self.append_to_parquet(self.metadata_data, self.LOCAL_METADATA_FILE_PATH)
+
+        if self.inventorypartnerdata:
+            inventory_rows = [{"inventory_partner_domain": domain} for domain in self.inventorypartnerdata]
+            self.append_to_parquet(inventory_rows, self.LOCAL_INVENTORY_PARTNER_FILE_PATH)
+            self.inventorypartnerdata = set()
+
+        if self.LOCAL_INVENTORY_PARTNER_FILE_PATH.exists():
+            inventory_df = pd.read_parquet(self.LOCAL_INVENTORY_PARTNER_FILE_PATH)
+            self.write_excel(
+                inventory_df,
+                self.LOCAL_INVENTORY_PARTNER_FILE_PATH
+            )
 
         gservice = None
         try:

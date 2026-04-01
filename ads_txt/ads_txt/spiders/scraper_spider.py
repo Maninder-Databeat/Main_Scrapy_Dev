@@ -9,6 +9,9 @@ from scrapy.http.response import Response
 from scrapy import signals
 from scrapy.spiders import Spider
 from scrapy.utils.project import get_project_settings
+from scrapy.crawler import CrawlerProcess
+from collections import defaultdict
+import pandas as pd
 
 from ads_txt.email_utils import send_email
 from ads_txt.items import AdsTxtItem, AdsTxtErrorItem, AdsTxtMetadataItem
@@ -117,6 +120,7 @@ class ScraperSpider(scrapy.Spider):
         return urls
 
     def parse_ads_txt(self, response: Response):
+    
         """Validates `ads.txt`, retries if invalid."""
         ads_txt_line = response.text.strip()
         response_meta = response.meta
@@ -395,6 +399,57 @@ class ScraperSpider(scrapy.Spider):
 
         if settings.get("SEND_MAIL_BOOL"):
             send_email(subject, body)
+
+        # After main domains scanned, dedupe inventory partner domains and scan them
+        self.scan_inventory_partner_domains()
+
+    def scan_inventory_partner_domains(self):
+        """Dedupe inventory partner domains and scan them."""
+        inventory_partner_file = settings.get("CUSTOM_RUN_SETTINGS")["COMMON"]["LOCAL_INVENTORY_PARTNER_FILE_PATH"]
+        
+        if not inventory_partner_file.exists():
+            self.logger.info("No inventory partner file found, skipping inventory partner scan.")
+            return
+        
+        # Read the inventory partner data
+        df = pd.read_parquet(inventory_partner_file)
+        
+        if df.empty or "inventory_partner_domain" not in df.columns:
+            self.logger.info("No inventory partner domains found, skipping inventory partner scan.")
+            return
+        
+        # Dedupe the inventory_partner_domain
+        unique_domains = df["inventory_partner_domain"].drop_duplicates().tolist()
+        
+        # Remove domains that were already in the original start_urls_with_meta
+        original_domains = {domain.lower() for domain, _ in self.start_urls_with_meta}
+        new_domains = [domain for domain in unique_domains if domain.lower() not in original_domains]
+        
+        if not new_domains:
+            self.logger.info("No new inventory partner domains to scan.")
+            return
+        
+        self.logger.info(f"Found {len(new_domains)} new inventory partner domains to scan.")
+        
+        # Create start_urls_with_meta for the new domains
+        # Use default meta_data similar to the original
+        inventory_start_urls_with_meta = [
+            (
+                domain,
+                defaultdict(None, {
+                    "http_client": "curl_cffi",
+                    "inventory_type": "ads.txt",  # or app-ads.txt? Maybe keep as ads.txt for now
+                    "ads_txt_page_url": "",
+                }),
+            )
+            for domain in new_domains
+        ]
+        
+        # Start a new spider run for inventory partner domains
+        self.logger.info("Starting scan of inventory partner domains...")
+        process = CrawlerProcess(settings)
+        process.crawl(ScraperSpider, start_urls_with_meta=inventory_start_urls_with_meta)
+        process.start()  # This will block until the new spider finishes
 
     @staticmethod
     def stats_to_gb(stats):
