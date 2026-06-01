@@ -18,61 +18,120 @@ from scrapy.utils.project import get_project_settings
 from ads_txt.items import AdsTxtItem, AdsTxtErrorItem, AdsTxtMetadataItem
 from ads_txt.utils import GoogleServices, remove_dir
 
-
 class AdsTxtPipeline:
+    # ── Keep only non-path config as class attributes ────────────────────────
     project_settings = get_project_settings()
     custom_run_settings: dict = project_settings.get("CUSTOM_RUN_SETTINGS")
     common_settings: dict = custom_run_settings.get("COMMON")
-
     cloud_settings: dict = custom_run_settings.get("CLOUD_SAVE")
     to_gcs_settings: dict = cloud_settings.get("TO_GCS")
     to_bq_settings: dict = cloud_settings.get("TO_BQ")
 
-    # Common
-
-    # UTC_DATETIME:datetime.datetime = project_settings.get("EXECUTION_DATE")
-    LOG_FILE_PATH: Path = common_settings.get("LOG_FILE_PATH")
-    BATCH_SIZE: int = common_settings.get(
-        "BATCH_SIZE"
-    )  # ✅ Save data every 100 items (adjust as needed)
-    ROOT_DATA_OUTPUT: Path = common_settings.get("ROOT_DATA_OUTPUT")
-    ROOT_DATA_OUTPUT_L1D: Path = common_settings.get("ROOT_DATA_OUTPUT_L1D")
-
-    REMOVE_SAME_DAY_OUTPUT_FILES: bool = common_settings.get(
-        "REMOVE_SAME_DAY_OUTPUT_FILES"
-    )
-    REMOVE_YESTERDAY_OUTPUT_FILES: bool = common_settings.get(
-        "REMOVE_YESTERDAY_OUTPUT_FILES"
-    )
-
-    LOCAL_SUCCESS_FILE_PATH: Path = common_settings.get("LOCAL_SUCCESS_FILE_PATH")
-    LOCAL_FAILURE_FILE_PATH: Path = common_settings.get("LOCAL_FAILURE_FILE_PATH")
-    LOCAL_METADATA_FILE_PATH: Path = common_settings.get("LOCAL_METADATA_FILE_PATH")
-    
-    ##########
-    LOCAL_INVENTORY_PARTNER_FILE_PATH: Path = common_settings.get("LOCAL_INVENTORY_PARTNER_FILE_PATH")
-    LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH: Path = common_settings.get("LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH")  
-    ##########
-
-    # cloud save settings
+    BATCH_SIZE: int = common_settings.get("BATCH_SIZE")
     PROJECT_ID: str = cloud_settings.get("PROJECT_ID")
     SERVICE_ACCOUNT_JSON_PATH: Path = cloud_settings.get("SERVICE_ACCOUNT_JSON_PATH")
-
-    # To GCS
-    UPLOAD_TO_GCS: bool = to_gcs_settings.get("UPLOAD_TO_GCS")
-    GCS_BUCKET: str = to_gcs_settings.get("GCS_BUCKET")
-    GCS_SUCCESS_GRI: str = to_gcs_settings.get("GCS_SUCCESS_GRI")
-    GCS_FAILURE_GRI: str = to_gcs_settings.get("GCS_FAILURE_GRI")
-    GCS_METADATA_GRI: str = to_gcs_settings.get("GCS_METADATA_GRI")
-
-    # To BQ
-    UPLOAD_GCS_TO_BQ: bool = to_bq_settings.get("UPLOAD_GCS_TO_BQ")
-    BQ_DATASET_ID: str = to_bq_settings.get("BQ_DATASET_ID")
     ADS_TXT_SUCCESS_BQ_TABLE_ID: str = to_bq_settings.get("ADS_TXT_SUCCESS_BQ_TABLE_ID")
     ADS_TXT_FAILURE_BQ_TABLE_ID: str = to_bq_settings.get("ADS_TXT_FAILURE_BQ_TABLE_ID")
-    ADS_TXT_METADATA_BQ_TABLE_ID: str = to_bq_settings.get(
-        "ADS_TXT_METADATA_BQ_TABLE_ID"
-    )
+    ADS_TXT_METADATA_BQ_TABLE_ID: str = to_bq_settings.get("ADS_TXT_METADATA_BQ_TABLE_ID")
+
+    def open_spider(self, spider: Spider):
+        """Resolve ALL file paths fresh from live settings on each spider run."""
+        self.success_data = []
+        self.failure_data = []
+        self.metadata_data = []
+        self.inventorypartnerdata = []
+
+        # ── Re-read settings live so second run gets different paths ──────────
+        live_settings = get_project_settings()
+        live_custom = live_settings.get("CUSTOM_RUN_SETTINGS")
+        live_common = live_custom.get("COMMON")
+        live_cloud = live_custom.get("CLOUD_SAVE")
+        live_to_gcs = live_cloud.get("TO_GCS")
+        live_to_bq = live_cloud.get("TO_BQ")
+
+        self.LOG_FILE_PATH = live_common.get("LOG_FILE_PATH")
+        self.ROOT_DATA_OUTPUT = live_common.get("ROOT_DATA_OUTPUT")
+        self.ROOT_DATA_OUTPUT_L1D = live_common.get("ROOT_DATA_OUTPUT_L1D")
+        self.REMOVE_SAME_DAY_OUTPUT_FILES = live_common.get("REMOVE_SAME_DAY_OUTPUT_FILES")
+        self.REMOVE_YESTERDAY_OUTPUT_FILES = live_common.get("REMOVE_YESTERDAY_OUTPUT_FILES")
+
+        self.LOCAL_SUCCESS_FILE_PATH = live_common.get("LOCAL_SUCCESS_FILE_PATH")
+        self.LOCAL_FAILURE_FILE_PATH = live_common.get("LOCAL_FAILURE_FILE_PATH")
+        self.LOCAL_METADATA_FILE_PATH = live_common.get("LOCAL_METADATA_FILE_PATH")
+        self.LOCAL_INVENTORY_PARTNER_FILE_PATH = live_common.get("LOCAL_INVENTORY_PARTNER_FILE_PATH")
+        self.LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH = live_common.get("LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH")
+
+        self.UPLOAD_TO_GCS = live_to_gcs.get("UPLOAD_TO_GCS")
+        self.GCS_BUCKET = live_to_gcs.get("GCS_BUCKET")
+        self.GCS_SUCCESS_GRI = live_to_gcs.get("GCS_SUCCESS_GRI")
+        self.GCS_FAILURE_GRI = live_to_gcs.get("GCS_FAILURE_GRI")
+        self.GCS_METADATA_GRI = live_to_gcs.get("GCS_METADATA_GRI")
+
+        self.UPLOAD_GCS_TO_BQ = live_to_bq.get("UPLOAD_GCS_TO_BQ")
+        self.BQ_DATASET_ID = live_to_bq.get("BQ_DATASET_ID")
+
+        spider.logger.info(f"Pipeline paths resolved: {self.LOCAL_SUCCESS_FILE_PATH}")
+
+        if self.REMOVE_YESTERDAY_OUTPUT_FILES:
+            remove_dir(self.ROOT_DATA_OUTPUT_L1D)
+
+        self.ensure_directory(self.ROOT_DATA_OUTPUT)
+        self.ensure_directory(self.LOG_FILE_PATH.parent)
+
+# class AdsTxtPipeline:
+#     project_settings = get_project_settings()
+#     custom_run_settings: dict = project_settings.get("CUSTOM_RUN_SETTINGS")
+#     common_settings: dict = custom_run_settings.get("COMMON")
+
+#     cloud_settings: dict = custom_run_settings.get("CLOUD_SAVE")
+#     to_gcs_settings: dict = cloud_settings.get("TO_GCS")
+#     to_bq_settings: dict = cloud_settings.get("TO_BQ")
+
+#     # Common
+
+#     # UTC_DATETIME:datetime.datetime = project_settings.get("EXECUTION_DATE")
+#     LOG_FILE_PATH: Path = common_settings.get("LOG_FILE_PATH")
+#     BATCH_SIZE: int = common_settings.get(
+#         "BATCH_SIZE"
+#     )  # ✅ Save data every 100 items (adjust as needed)
+#     ROOT_DATA_OUTPUT: Path = common_settings.get("ROOT_DATA_OUTPUT")
+#     ROOT_DATA_OUTPUT_L1D: Path = common_settings.get("ROOT_DATA_OUTPUT_L1D")
+
+#     REMOVE_SAME_DAY_OUTPUT_FILES: bool = common_settings.get(
+#         "REMOVE_SAME_DAY_OUTPUT_FILES"
+#     )
+#     REMOVE_YESTERDAY_OUTPUT_FILES: bool = common_settings.get(
+#         "REMOVE_YESTERDAY_OUTPUT_FILES"
+#     )
+
+#     LOCAL_SUCCESS_FILE_PATH: Path = common_settings.get("LOCAL_SUCCESS_FILE_PATH")
+#     LOCAL_FAILURE_FILE_PATH: Path = common_settings.get("LOCAL_FAILURE_FILE_PATH")
+#     LOCAL_METADATA_FILE_PATH: Path = common_settings.get("LOCAL_METADATA_FILE_PATH")
+    
+#     ##########
+#     LOCAL_INVENTORY_PARTNER_FILE_PATH: Path = common_settings.get("LOCAL_INVENTORY_PARTNER_FILE_PATH")
+#     LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH: Path = common_settings.get("LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH")  
+#     ##########
+
+#     # cloud save settings
+#     PROJECT_ID: str = cloud_settings.get("PROJECT_ID")
+#     SERVICE_ACCOUNT_JSON_PATH: Path = cloud_settings.get("SERVICE_ACCOUNT_JSON_PATH")
+
+#     # To GCS
+#     UPLOAD_TO_GCS: bool = to_gcs_settings.get("UPLOAD_TO_GCS")
+#     GCS_BUCKET: str = to_gcs_settings.get("GCS_BUCKET")
+#     GCS_SUCCESS_GRI: str = to_gcs_settings.get("GCS_SUCCESS_GRI")
+#     GCS_FAILURE_GRI: str = to_gcs_settings.get("GCS_FAILURE_GRI")
+#     GCS_METADATA_GRI: str = to_gcs_settings.get("GCS_METADATA_GRI")
+
+#     # To BQ
+#     UPLOAD_GCS_TO_BQ: bool = to_bq_settings.get("UPLOAD_GCS_TO_BQ")
+#     BQ_DATASET_ID: str = to_bq_settings.get("BQ_DATASET_ID")
+#     ADS_TXT_SUCCESS_BQ_TABLE_ID: str = to_bq_settings.get("ADS_TXT_SUCCESS_BQ_TABLE_ID")
+#     ADS_TXT_FAILURE_BQ_TABLE_ID: str = to_bq_settings.get("ADS_TXT_FAILURE_BQ_TABLE_ID")
+#     ADS_TXT_METADATA_BQ_TABLE_ID: str = to_bq_settings.get(
+#         "ADS_TXT_METADATA_BQ_TABLE_ID"
+#     )
 
     ##########
     def extract_inventory_partner_domains(self, text):
@@ -112,20 +171,94 @@ class AdsTxtPipeline:
         return rows
     ###########
 
+    # def open_spider(self, spider: Spider):
+    #     """Resolve LIVE settings and initialize empty buffers."""
+    #     self.success_data = []
+    #     self.failure_data = []
+    #     self.metadata_data = []
+    #     self.inventorypartnerdata = []
+
+    #     # live_settings = get_project_settings()
+    #     live_settings = spider.settings
+    #     live_custom = live_settings.get("CUSTOM_RUN_SETTINGS")
+    #     live_common = live_custom.get("COMMON")
+    #     live_cloud = live_custom.get("CLOUD_SAVE")
+    #     live_to_gcs = live_cloud.get("TO_GCS")
+    #     live_to_bq = live_cloud.get("TO_BQ")
+
+    #     self.LOG_FILE_PATH = live_common.get("LOG_FILE_PATH")
+    #     self.ROOT_DATA_OUTPUT = live_common.get("ROOT_DATA_OUTPUT")
+    #     self.ROOT_DATA_OUTPUT_L1D = live_common.get("ROOT_DATA_OUTPUT_L1D")
+    #     self.REMOVE_SAME_DAY_OUTPUT_FILES = live_common.get("REMOVE_SAME_DAY_OUTPUT_FILES")
+    #     self.REMOVE_YESTERDAY_OUTPUT_FILES = live_common.get("REMOVE_YESTERDAY_OUTPUT_FILES")
+
+    #     self.LOCAL_SUCCESS_FILE_PATH = live_common.get("LOCAL_SUCCESS_FILE_PATH")
+    #     self.LOCAL_FAILURE_FILE_PATH = live_common.get("LOCAL_FAILURE_FILE_PATH")
+    #     self.LOCAL_METADATA_FILE_PATH = live_common.get("LOCAL_METADATA_FILE_PATH")
+    #     self.LOCAL_INVENTORY_PARTNER_FILE_PATH = live_common.get("LOCAL_INVENTORY_PARTNER_FILE_PATH")
+    #     self.LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH = live_common.get("LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH")
+
+    #     self.UPLOAD_TO_GCS = live_to_gcs.get("UPLOAD_TO_GCS")
+    #     self.GCS_BUCKET = live_to_gcs.get("GCS_BUCKET")
+    #     self.GCS_SUCCESS_GRI = live_to_gcs.get("GCS_SUCCESS_GRI")
+    #     self.GCS_FAILURE_GRI = live_to_gcs.get("GCS_FAILURE_GRI")
+    #     self.GCS_METADATA_GRI = live_to_gcs.get("GCS_METADATA_GRI")
+
+    #     self.UPLOAD_GCS_TO_BQ = live_to_bq.get("UPLOAD_GCS_TO_BQ")
+    #     self.BQ_DATASET_ID = live_to_bq.get("BQ_DATASET_ID")
+
+    #     spider.logger.info(f"Pipeline paths resolved: {self.LOCAL_SUCCESS_FILE_PATH}")
+
+    #     if self.REMOVE_YESTERDAY_OUTPUT_FILES:
+    #         remove_dir(self.ROOT_DATA_OUTPUT_L1D)
+
+    #     self.ensure_directory(self.ROOT_DATA_OUTPUT)
+    #     self.ensure_directory(self.LOG_FILE_PATH.parent)
+
     def open_spider(self, spider: Spider):
-        """Initialize empty lists for batching before writing to Parquet"""
+        """Resolve LIVE settings and initialize empty buffers."""
         self.success_data = []
         self.failure_data = []
         self.metadata_data = []
-
-        #########
         self.inventorypartnerdata = []
-        #########
 
+        # live_settings = get_project_settings()
+        live_settings = spider.settings
+        live_custom = live_settings.get("CUSTOM_RUN_SETTINGS")
+        live_common = live_custom.get("COMMON")
+        live_cloud = live_custom.get("CLOUD_SAVE")
+        live_to_gcs = live_cloud.get("TO_GCS")
+        live_to_bq = live_cloud.get("TO_BQ")
 
-        # Ensure folders exist and are not conflicting with single files
-        # for folder in [self.success_file, self.failure_file, self.metadata_file]:
-        spider.logger.info(f"{self.REMOVE_YESTERDAY_OUTPUT_FILES=}")
+        self.LOG_FILE_PATH = live_common.get("LOG_FILE_PATH")
+        self.ROOT_DATA_OUTPUT = live_common.get("ROOT_DATA_OUTPUT")
+        self.ROOT_DATA_OUTPUT_L1D = live_common.get("ROOT_DATA_OUTPUT_L1D")
+        self.REMOVE_SAME_DAY_OUTPUT_FILES = live_common.get("REMOVE_SAME_DAY_OUTPUT_FILES")
+        self.REMOVE_YESTERDAY_OUTPUT_FILES = live_common.get("REMOVE_YESTERDAY_OUTPUT_FILES")
+
+        self.LOCAL_SUCCESS_FILE_PATH = live_common.get("LOCAL_SUCCESS_FILE_PATH")
+        self.LOCAL_FAILURE_FILE_PATH = live_common.get("LOCAL_FAILURE_FILE_PATH")
+        self.LOCAL_METADATA_FILE_PATH = live_common.get("LOCAL_METADATA_FILE_PATH")
+        self.LOCAL_INVENTORY_PARTNER_FILE_PATH = live_common.get("LOCAL_INVENTORY_PARTNER_FILE_PATH")
+        self.LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH = live_common.get("LOCAL_INVENTORY_PARTNER_EXCEL_FILE_PATH")
+
+        self.UPLOAD_TO_GCS = live_to_gcs.get("UPLOAD_TO_GCS")
+        self.GCS_BUCKET = live_to_gcs.get("GCS_BUCKET")
+        self.GCS_SUCCESS_GRI = live_to_gcs.get("GCS_SUCCESS_GRI")
+        self.GCS_FAILURE_GRI = live_to_gcs.get("GCS_FAILURE_GRI")
+        self.GCS_METADATA_GRI = live_to_gcs.get("GCS_METADATA_GRI")
+
+        self.UPLOAD_GCS_TO_BQ = live_to_bq.get("UPLOAD_GCS_TO_BQ")
+        self.BQ_DATASET_ID = live_to_bq.get("BQ_DATASET_ID")
+        
+        # ── 🎯 FIX: BIND TABLE IDS TO THE RUNTIME INSTANCE ──────────────────
+        self.ADS_TXT_SUCCESS_BQ_TABLE_ID = live_to_bq.get("ADS_TXT_SUCCESS_BQ_TABLE_ID")
+        self.ADS_TXT_FAILURE_BQ_TABLE_ID = live_to_bq.get("ADS_TXT_FAILURE_BQ_TABLE_ID")
+        self.ADS_TXT_METADATA_BQ_TABLE_ID = live_to_bq.get("ADS_TXT_METADATA_BQ_TABLE_ID")
+        # ───────────────────────────────────────────────────────────────────
+
+        spider.logger.info(f"Pipeline paths resolved: {self.LOCAL_SUCCESS_FILE_PATH}")
+
         if self.REMOVE_YESTERDAY_OUTPUT_FILES:
             remove_dir(self.ROOT_DATA_OUTPUT_L1D)
 

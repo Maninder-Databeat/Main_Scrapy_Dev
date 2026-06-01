@@ -124,7 +124,6 @@ class DynamicHttpClientMiddleware:
 
     async def process_request(self, request: Request, spider):
         """Check request metadata and decide which HTTP client to use."""
-
         http_client = request.meta.get("http_client", "default")  # Default is Scrapy
 
         if http_client == "curl_cffi":
@@ -134,44 +133,43 @@ class DynamicHttpClientMiddleware:
     async def use_curl_cffi(self, request: Request, spider: Spider):
         """Use curl-cffi for the request."""
         spider.logger.info(f"Using curl-cffi for {request.url}")
+        
+        # Read the timeout dynamically from Scrapy's settings or default to 10
+        timeout = request.meta.get("download_timeout", 10)
+
         try:
             try:
-                # spider.logger.info(f"Using curl-cffi for {request.url} - 2")
                 async with curl_async_session() as client:
-                    # spider.logger.info(f"Using curl-cffi for {request.url} - 3")
                     response = await client.get(
                         request.url,
-                        timeout=10,
-                        impersonate="chrome",
+                        timeout=timeout,
+                        impersonate="chrome124",  # Explicit modern fingerprint handles strict firewalls better
                         allow_redirects=True,
                         verify=True,
                         max_redirects=5,
                     )
                     request.meta["ssl_verify"] = True
-                    # spider.logger.info(f"Using curl-cffi for {request.url} - 4")
-                    # response.e
-
             except errors.CurlError as e:
                 spider.logger.warning(
-                    f"SSL Error or other exception for {request.url}: {e}. Retrying with custom SSL context."
+                    f"SSL Error or connection exception for {request.url}: {e}. Retrying with verify=False."
                 )
                 async with curl_async_session() as client:
                     response = await client.get(
                         request.url,
-                        timeout=10,
-                        impersonate="chrome",
+                        timeout=timeout,
+                        impersonate="chrome124",
                         allow_redirects=True,
                         verify=False,
                         max_redirects=5,
                     )
                     request.meta["ssl_verify"] = False
 
-            # (Removed content-encoding because if passed in html response it will raise error due to double compression)
+            # Convert curl_cffi headers to lists to stay fully compliant with Scrapy's expectations
             headers_dict = {
                 k: [v]
                 for k, v in response.headers.items()
                 if k.lower() != "content-encoding"
-            }  # Converts curl_cffi headers
+            }
 
             return HtmlResponse(
                 url=response.url,
@@ -180,8 +178,9 @@ class DynamicHttpClientMiddleware:
                 status=response.status_code,
                 headers=headers_dict,
             )
-        except errors.CurlError as e:
-            spider.logger.error(f"curl-cffi request failed for {request.url}: {e}")
+
         except Exception as e:
-            spider.logger.error(f"The request failed for {request.url}: {e}")
-        return None  # Fall back to Scrapy
+            spider.logger.error(f"curl-cffi completely failed for {request.url}: {e}")
+            # FIX: Raise the exception to bypass Twisted entirely. 
+            # This triggers your spider's handle_error() method to immediately process the next fallback URL.
+            raise e
