@@ -929,11 +929,9 @@ if __name__ == "__main__":
             query = """
                 SELECT domain, inventory_type, ads_page_url, http_client
                 FROM `ads-txt-validator.ads_txt_scraper_data.start_urls_table`
-                
-                
             """
             df = gservice.query_bq_to_pd(query)
-            df.drop(
+            df.drop( 
                 columns=[c for c in df.columns if c not in ["http_client", "ads_page_url", "domain", "inventory_type"]],
                 inplace=True,
             )

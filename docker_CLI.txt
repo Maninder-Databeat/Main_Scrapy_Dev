@@ -1,0 +1,43 @@
+docker build -t southamerica-west1-docker.pkg.dev/ads-txt-validator/cloud-run-source-deploy/scrapy-ipd-test:v1 .
+
+docker push southamerica-west1-docker.pkg.dev/ads-txt-validator/cloud-run-source-deploy/scrapy-ipd-test:v1
+
+gcloud run jobs create scrapy-ipd-test-job 
+--image=southamerica-west1-docker.pkg.dev/ads-txt-validator/cloud-run-source-deploy/scrapy-ipd-test:v1 
+--region=southamerica-west1 
+--max-retries=3 --task-timeout=3600 
+--set-env-vars="SERVICE_ACCOUNT_FILE_NAME=service_account.json,UPLOAD_TO_GCS=True,UPLOAD_GCS_TO_BQ=True,BQ_DATASET_ID=ads_txt_test_dataset,GCS_BUCKET=ads_txy_bucket_db,GCS_PATH_PREFIX=test_run/,MAIL_USER=,MAIL_PASS=,MAIL_FROM=,MAIL_TO=,IS_TEST=False,UPLOAD_TO_GCS=True,UPLOAD_GCS_TO_BQ=True" 
+
+
+# GCP Authentication
+SERVICE_ACCOUNT_FILE_NAME=service_account.json
+
+# --- CLOUD SWITCHES (Turn ON for testing, leave ON for production) ---
+UPLOAD_TO_GCS=True
+UPLOAD_GCS_TO_BQ=True
+
+# --- BIGQUERY TEST REDIRECTION ---
+# Instead of your live production dataset, specify your staging/testing dataset here.
+# BigQuery will automatically create the tables inside this dataset.
+BQ_DATASET_ID=ads_txt_test_dataset
+
+# --- GCS TEST REDIRECTION ---
+GCS_BUCKET= ads_txy_bucket_db
+# Prepend a test folder prefix. Must end with a trailing slash e.g., "test_run/"
+# Leave completely BLANK in your real production server environment variables!
+GCS_PATH_PREFIX=test_run/
+
+# Email Alerts Configuration
+MAIL_USER=
+MAIL_PASS=
+MAIL_FROM=
+MAIL_TO=
+
+
+# Set to True for fast local testing with hardcoded domains. 
+# Set to False to pull from your BigQuery start table.
+IS_TEST=False
+
+# Keep your cloud upload toggles here as well
+UPLOAD_TO_GCS=True
+UPLOAD_GCS_TO_BQ=True

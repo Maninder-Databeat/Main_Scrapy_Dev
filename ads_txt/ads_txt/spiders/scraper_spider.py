@@ -78,6 +78,7 @@ class ScraperSpider(scrapy.Spider):
                         callback=self.parse_ads_txt,
                         errback=self.handle_error,
                         meta=meta,
+                        dont_filter=True,
                     )
                 else:
                     yield scrapy.Request(
@@ -85,6 +86,7 @@ class ScraperSpider(scrapy.Spider):
                         callback=self.parse_ads_txt,
                         errback=self.handle_error,
                         meta=meta,
+                        dont_filter=True,
                     )
 
     def generate_ads_txt_urls(self, domain, inventory_type):
@@ -270,6 +272,7 @@ class ScraperSpider(scrapy.Spider):
                 callback=self.parse_ads_txt,
                 errback=self.handle_error,
                 meta={**meta, "attempts": attempts + 1},
+                dont_filter=True,
             )
         else:
             # All attempts failed, check if the root domain has changed
@@ -284,6 +287,7 @@ class ScraperSpider(scrapy.Spider):
                 callback=self.check_root_domain,
                 errback=self.handle_error,
                 meta={**meta, "attempts": attempts + 1},
+                dont_filter=True,
             )
 
     def check_root_domain(self, response: Response):
@@ -319,6 +323,7 @@ class ScraperSpider(scrapy.Spider):
                 callback=self.parse_ads_txt,
                 errback=self.handle_error,
                 meta=meta,
+                dont_filter=True,
             )
         else:
             self.logger.info(
